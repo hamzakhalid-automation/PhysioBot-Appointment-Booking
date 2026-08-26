@@ -25,7 +25,7 @@ An AI-powered booking assistant built with **n8n** that lets physio therapy clin
 
 ## 🚀 Screenshots
 
-![Workflow](images/Workflow-Image.png)
+![Workflow](workflow-image.png)
 
 ---
 
