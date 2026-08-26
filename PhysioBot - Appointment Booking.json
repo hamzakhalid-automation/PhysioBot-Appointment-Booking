@@ -1,0 +1,320 @@
+{
+  "name": "07-PhysioBot - Appointment Booking",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "physio-booking",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        288,
+        224
+      ],
+      "id": "666268a9-4f93-4a4d-85e2-444bb8434acc",
+      "name": "Webhook",
+      "webhookId": "61a426cc-ac7b-42c4-8f89-1b40fc1bb037"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{$json.body.message.toolCalls[0].id}}\",\n      \"result\": \"Patient qualified successfully. Proceed immediately to check availability.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        736,
+        32
+      ],
+      "id": "cabd43c7-8cac-42bc-b4f6-c9627952b7d4",
+      "name": "qualify_patient"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"results\": [\n    {\n      \"toolCallId\": \"{{$json.toolCallId}}\",\n      \"result\": \"SUCCESS - Available slots at the {{$json.location}} clinic: {{$json.slotText}}. Read these slots to the patient one by one and ask which one they prefer.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1264,
+        208
+      ],
+      "id": "5c7263e6-c00d-4692-bbec-0adacaacaaab",
+      "name": "check_availability"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "i.hamzaaaaaaa@gmail.com",
+          "mode": "list",
+          "cachedResultName": "i.hamzaaaaaaa@gmail.com"
+        },
+        "start": "={{ $json.startTime }}",
+        "end": "={{ $json.endTime }}",
+        "additionalFields": {
+          "description": "=Patient: {{ $json.full_name }}\nDOB: {{ $json.date_of_birth }}\nComplaint: {{ $json.complaint }}\nReferral: {{ $json.referral_type }}\nLocation: {{ $json.preferred_location }}",
+          "location": "={{ $json.preferred_location }} - The Physio Clinic",
+          "summary": "={{ $json.full_name }} - Physio Appointment"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        960,
+        416
+      ],
+      "id": "28dc00c5-6214-4350-9c66-347ef6ffe4f8",
+      "name": "Create an event"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const body = $input.first().json.body;\n  const args = body.message.toolCalls[0].function.arguments;\n  const toolCallId = body.message.toolCalls[0].id;\n\n  // PKT = UTC+5, so subtract 5 hours for Google Calendar\n  const PKT_OFFSET = 5 * 60 * 60 * 1000;\n\n  // Build start time — try ISO first, then parse text\n  let startTime;\n  const dt = args.appointment_datetime || '';\n\n  if (dt.match(/^\\d{4}-\\d{2}-\\d{2}T/)) {\n    // Already ISO format: 2026-06-17T15:00:00\n    startTime = new Date(new Date(dt).getTime() - PKT_OFFSET);\n\n  } else {\n    // Text format: \"Wednesday 17 June at 3PM\" or \"17 June at 3:00 PM\"\n    const months = {\n      january:0, february:1, march:2, april:3,\n      may:4, june:5, july:6, august:7,\n      september:8, october:9, november:10, december:11\n    };\n\n    // Extract day number\n    const dayMatch = dt.match(/(\\d{1,2})/);\n    const day = dayMatch ? parseInt(dayMatch[1]) : 17;\n\n    // Extract month\n    const monthMatch = dt.toLowerCase().match(/(january|february|march|april|may|june|july|august|september|october|november|december)/);\n    const month = monthMatch ? months[monthMatch[1]] : 5;\n\n    // Extract hour and AM/PM\n    const timeMatch = dt.match(/(\\d{1,2})(?::(\\d{2}))?\\s*(AM|PM)/i);\n    let hour = timeMatch ? parseInt(timeMatch[1]) : 9;\n    const mins = timeMatch && timeMatch[2] ? parseInt(timeMatch[2]) : 0;\n    const ampm = timeMatch ? timeMatch[3].toUpperCase() : 'AM';\n\n    if (ampm === 'PM' && hour !== 12) hour += 12;\n    if (ampm === 'AM' && hour === 12) hour = 0;\n\n    // Build date in PKT then convert to UTC\n   const pktDate = new Date(2026, month, day, hour, mins, 0, 0);\n    startTime = new Date(pktDate.getTime() - PKT_OFFSET);\n  }\n\n  const endTime = new Date(startTime.getTime() + 60 * 60 * 1000);\n\n  return [{\n    json: {\n      toolCallId: toolCallId,\n      full_name: args.full_name || 'Patient',\n      date_of_birth: args.date_of_birth || '',\n      complaint: args.complaint || '',\n      referral_type: args.referral_type || '',\n      preferred_location: args.preferred_location || '',\n      appointment_datetime: dt,\n      phone_number: args.phone_number || '',\n      startTime: startTime.toISOString(),\n      endTime: endTime.toISOString()\n    }\n  }];\n\n} catch(e) {\n  // Return error details so we can debug\n  return [{\n    json: {\n      error: e.message,\n      toolCallId: 'error',\n      startTime: new Date().toISOString(),\n      endTime: new Date(Date.now() + 3600000).toISOString(),\n      full_name: 'Debug Patient',\n      preferred_location: 'prospect'\n    }\n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        416
+      ],
+      "id": "849f79f3-b317-41f8-9ac9-9ef2fcf94c28",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"results\": [\n    {\n      \"toolCallId\": \"{{$('Webhook').first().json.body.message.toolCalls[0].id}}\",\n      \"result\": \"Appointment successfully booked for {{$('Webhook').first().json.body.message.toolCalls[0].function.arguments.full_name}} at the {{$('Webhook').first().json.body.message.toolCalls[0].function.arguments.preferred_location}} clinic. The appointment has been added to the calendar.\"\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1184,
+        416
+      ],
+      "id": "78cf5cca-e69f-490d-83cd-ccd9d88f80f6",
+      "name": "book confirmation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhookData = $('Webhook').first().json;\nconst toolCallId = webhookData.body.message.toolCalls[0].id;\nconst location = webhookData.body.message.toolCalls[0].function.arguments.preferred_location;\n\n// Get all booked event start times from Google Calendar\nconst bookedEvents = $input.all();\nconst bookedTimes = new Set(\n  bookedEvents.map(e => {\n    const start = e.json.start?.dateTime;\n    return start ? new Date(start).getTime() : null;\n  }).filter(Boolean)\n);\n\nconst PKT_OFFSET = 5 * 60;\nconst nowUTC = new Date();\nconst nowPKT = new Date(nowUTC.getTime() + PKT_OFFSET * 60 * 1000);\n\nconst businessHours = [9, 10, 11, 14, 15];\nconst slots = [];\n\nlet day = new Date(nowPKT);\nday.setDate(day.getDate() + 1);\n\nwhile (slots.length < 5) {\n  const dayOfWeek = day.getDay();\n  if (dayOfWeek !== 0) { // skip Sunday\n    for (const hour of businessHours) {\n      if (slots.length >= 5) break;\n\n      const slotPKT = new Date(day);\n      slotPKT.setHours(hour, 0, 0, 0);\n\n      // Convert to UTC for comparison with Google Calendar\n      const slotUTC = new Date(slotPKT.getTime() - PKT_OFFSET * 60 * 1000);\n\n      // Skip if already booked\n      if (bookedTimes.has(slotUTC.getTime())) continue;\n\n      const dayName = slotPKT.toLocaleDateString('en-AU', { weekday: 'long' });\n      const dateName = slotPKT.toLocaleDateString('en-AU', { day: 'numeric', month: 'long' });\n      const timeStr = hour >= 12 ? `${hour === 12 ? 12 : hour - 12}:00 PM` : `${hour}:00 AM`;\n\n      slots.push(`${dayName} ${dateName} at ${timeStr}`);\n    }\n  }\n  day.setDate(day.getDate() + 1);\n}\n\nconst slotText = slots.map((s, i) => `Slot ${i+1}: ${s}`).join('. ');\n\nreturn [{ json: { toolCallId, location, slotText } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        240
+      ],
+      "id": "d4bcb5d7-cde2-4626-a065-e5f04dc34572",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.message.toolCalls[0].function.name }}",
+                    "rightValue": "qualify_patient",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "8ff2dab9-364f-4653-9e2c-723513e38165"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e7a1e3f6-f358-4780-a21c-9b547a7ce281",
+                    "leftValue": "={{ $json.body.message.toolCalls[0].function.name }}",
+                    "rightValue": "check_availability",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "5667f778-4a14-4dcd-a480-37c62a098607",
+                    "leftValue": "={{ $json.body.message.toolCalls[0].function.name }}",
+                    "rightValue": "book_appointment",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        512,
+        208
+      ],
+      "id": "640c9bd2-b6c5-41cc-9c09-31e5a96f2a38",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "i.hamzaaaaaaa@gmail.com",
+          "mode": "list",
+          "cachedResultName": "i.hamzaaaaaaa@gmail.com"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        720,
+        208
+      ],
+      "id": "a41c29fd-dabb-4d13-91e4-793d880abf24",
+      "name": "Get many events"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "book confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "check_availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "qualify_patient",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get many events",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many events": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "5a8f25ef-9508-4788-82b2-6ef85feb517a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f31d08e6a0bfc014b8b51b6cf186b6a247dfbd284dd92a62a0943443c6bcb23c"
+  },
+  "nodeGroups": [],
+  "id": "gf3W81ZlOdBDChST",
+  "tags": []
+}
